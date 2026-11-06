@@ -29,45 +29,70 @@ To allow the script to unfollow users on your behalf, you need a GitHub token wi
 const TOKEN = "YOUR_GITHUB_PERSONAL_ACCESS_TOKEN";
 const headers = {
   "Authorization": `Bearer ${TOKEN}`,
-  "Accept": "application/vnd.github+json"
+  "Accept": "application/vnd.github+json",
+  "User-Agent": "Unfollow-Script"
 };
 
-async function unfollowNonFollowers() {
-  console.log("Fetching following and followers lists...");
+// Helper function to fetch ALL pages of a GitHub endpoint
+async function fetchAllPages(baseUrl) {
+  let allUsers = [];
+  let page = 1;
 
-  const [followingRes, followersRes] = await Promise.all([
-    fetch("[https://api.github.com/user/following?per_page=100](https://api.github.com/user/following?per_page=100)", { headers }),
-    fetch("[https://api.github.com/user/followers?per_page=100](https://api.github.com/user/followers?per_page=100)", { headers })
-  ]);
+  while (true) {
+    const res = await fetch(`${baseUrl}?per_page=100&page=${page}`, { headers });
+    if (!res.ok) {
+      throw new Error(`HTTP Error ${res.status} while fetching ${baseUrl}`);
+    }
+    const data = await res.json();
+    if (data.length === 0) break; // No more pages left
 
-  if (!followingRes.ok || !followersRes.ok) {
-    console.error("Error fetching data. Check if your Personal Access Token is valid.");
-    return;
+    allUsers = allUsers.concat(data);
+    page++;
   }
+  return allUsers;
+}
 
-  const following = await followingRes.json();
-  const followers = await followersRes.json();
+async function unfollowNonFollowers() {
+  try {
+    console.log("Fetching ALL following and followers across all pages...");
 
-  const followerSet = new Set(followers.map(u => u.login));
-  let unfollowedCount = 0;
+    const [following, followers] = await Promise.all([
+      fetchAllPages("https://api.github.com/user/following"),
+      fetchAllPages("https://api.github.com/user/followers")
+    ]);
 
-  for (const user of following) {
-    if (!followerSet.has(user.login)) {
-      const res = await fetch(`[https://api.github.com/user/following/$](https://api.github.com/user/following/$){user.login}`, {
-        method: "DELETE",
-        headers
-      });
-      if (res.status === 204) {
-        console.log(`[-] Unfollowed: @${user.login}`);
-        unfollowedCount++;
+    console.log(`Total Following: ${following.length} | Total Followers: ${followers.length}\n`);
+
+    const followerSet = new Set(followers.map(u => u.login));
+    let unfollowedCount = 0;
+
+    for (const user of following) {
+      if (!followerSet.has(user.login)) {
+        const res = await fetch(`https://api.github.com/user/following/${user.login}`, {
+          method: "DELETE",
+          headers
+        });
+
+        if (res.status === 204) {
+          console.log(`[-] Unfollowed: @${user.login}`);
+          unfollowedCount++;
+        } else {
+          console.log(`[!] Failed to unfollow @${user.login} (Status: ${res.status})`);
+        }
+
+        // Small 200ms delay so GitHub doesn't rate-limit or block rapid DELETE requests
+        await new Promise(resolve => setTimeout(resolve, 200));
       }
     }
-  }
 
-  console.log(`Done! Unfollowed ${unfollowedCount} user(s).`);
+    console.log(`\nDone! Unfollowed ${unfollowedCount} user(s) in total.`);
+  } catch (err) {
+    console.error("Error running script:", err.message);
+  }
 }
 
 unfollowNonFollowers();
+
 ```
 
 ---
