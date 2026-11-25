@@ -1,0 +1,27 @@
+name: Unfollow Non-Followers
+
+on:
+  schedule:
+    # Runs every 2 days at 00:00 UTC
+    - cron: "0 0 */2 * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  unfollow:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Unfollow non-followers
+        env:
+          UNFOLLOW_TOKEN: ${{ secrets.UNFOLLOW_TOKEN }}
+        run: node unfollow.js
